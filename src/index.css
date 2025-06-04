@@ -1,0 +1,152 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+:root {
+  --fantasy-dark: 26 26 46; /* #1a1a2e */
+  --fantasy-medium: 22 33 62; /* #16213e */
+  --fantasy-light: 15 52 96; /* #0f3460 */
+  --fantasy-accent: 233 69 96; /* #e94560 */
+  --fantasy-gold: 255 215 0; /* #ffd700 */
+  --fantasy-silver: 192 192 192; /* #c0c0c0 */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: hsl(var(--fantasy-dark));
+  color: white;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--fantasy-dark));
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--fantasy-light));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--fantasy-accent));
+}
+
+/* Animation keyframes */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Utility classes */
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-slideIn {
+  animation: slideIn 0.3s ease-out;
+}
+
+.animate-pulse {
+  animation: pulse 2s infinite;
+}
+
+/* Custom focus styles */
+input:focus,
+textarea:focus,
+select:focus,
+button:focus {
+  outline: 2px solid hsl(var(--fantasy-accent));
+  outline-offset: 2px;
+}
+
+/* Button hover effects */
+button {
+  transition: all 0.2s ease-in-out;
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+/* Loading spinner */
+.spinner {
+  border: 2px solid hsl(var(--fantasy-dark));
+  border-top: 2px solid hsl(var(--fantasy-accent));
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Fantasy-themed text shadows */
+.text-glow {
+  text-shadow: 0 0 10px hsl(var(--fantasy-gold));
+}
+
+.text-shadow {
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* Custom checkbox styles */
+input[type="checkbox"] {
+  accent-color: hsl(var(--fantasy-accent));
+}
+
+/* Dice animation */
+@keyframes diceRoll {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(90deg); }
+  50% { transform: rotate(180deg); }
+  75% { transform: rotate(270deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.dice-roll {
+  animation: diceRoll 0.5s ease-in-out;
+}
