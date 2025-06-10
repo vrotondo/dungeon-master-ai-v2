@@ -18,8 +18,27 @@ class AIDungeonMaster:
         
         genai.configure(api_key=api_key)
         
-        # Try to find the correct model name
-        self.model = self._get_available_model()
+        # Use the current recommended model as suggested by Google
+        print("[INFO] Initializing Gemini model...")
+        try:
+            # Try gemini-1.5-flash first (recommended by Google)
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            print("[INFO] Using model: gemini-1.5-flash")
+        except Exception as e1:
+            print(f"[WARNING] gemini-1.5-flash failed: {e1}")
+            try:
+                # Fallback to gemini-1.5-pro
+                self.model = genai.GenerativeModel('gemini-1.5-pro')
+                print("[INFO] Using model: gemini-1.5-pro")
+            except Exception as e2:
+                print(f"[WARNING] gemini-1.5-pro failed: {e2}")
+                try:
+                    # Try without the version number
+                    self.model = genai.GenerativeModel('gemini-flash')
+                    print("[INFO] Using model: gemini-flash")
+                except Exception as e3:
+                    print(f"[WARNING] gemini-flash failed: {e3}")
+                    raise Exception(f"Could not initialize any Gemini model. Errors: {e1}, {e2}, {e3}")
         
         # System prompt for the AI DM
         self.system_prompt = """You are an expert Dungeon Master for D&D 5th Edition. You are creative, engaging, and follow the rules of D&D 5E. Your role is to:
@@ -41,68 +60,6 @@ When generating responses, consider:
 - D&D 5E rules and mechanics
 
 Format your responses in a natural, engaging way that moves the story forward."""
-
-    def _get_available_model(self):
-        """Find and return an available Gemini model."""
-        try:
-            # List available models
-            models = genai.list_models()
-            print("[DEBUG] Available models:")
-            
-            # Preferred model names in order of preference
-            preferred_models = [
-                'gemini-1.5-pro',
-                'gemini-1.5-flash', 
-                'gemini-pro',
-                'gemini-1.0-pro',
-                'models/gemini-1.5-pro',
-                'models/gemini-1.5-flash',
-                'models/gemini-pro',
-                'models/gemini-1.0-pro'
-            ]
-            
-            available_model_names = []
-            for model in models:
-                model_name = model.name
-                available_model_names.append(model_name)
-                print(f"  - {model_name}")
-                
-                # Check if this model supports generateContent
-                if hasattr(model, 'supported_generation_methods'):
-                    if 'generateContent' in model.supported_generation_methods:
-                        # Check if it's one of our preferred models
-                        for preferred in preferred_models:
-                            if preferred in model_name:
-                                print(f"[INFO] Using model: {model_name}")
-                                return genai.GenerativeModel(model_name)
-            
-            # If no preferred model found, use the first available model that supports generateContent
-            for model in models:
-                if hasattr(model, 'supported_generation_methods'):
-                    if 'generateContent' in model.supported_generation_methods:
-                        print(f"[INFO] Using fallback model: {model.name}")
-                        return genai.GenerativeModel(model.name)
-            
-            # If still no model found, try the most common current model names
-            fallback_models = ['gemini-1.5-flash', 'gemini-1.5-pro']
-            for model_name in fallback_models:
-                try:
-                    test_model = genai.GenerativeModel(model_name)
-                    print(f"[INFO] Using fallback model: {model_name}")
-                    return test_model
-                except:
-                    continue
-            
-            raise Exception(f"No suitable Gemini model found. Available models: {available_model_names}")
-            
-        except Exception as e:
-            print(f"[ERROR] Error getting model: {e}")
-            # Last resort - try the newest common model name
-            try:
-                print("[INFO] Trying gemini-1.5-flash as last resort...")
-                return genai.GenerativeModel('gemini-1.5-flash')
-            except:
-                raise Exception(f"Could not initialize any Gemini model. Error: {e}")
 
     def generate_response(
         self, 
@@ -140,6 +97,8 @@ Format your responses in a natural, engaging way that moves the story forward.""
                 generation_config=genai.types.GenerationConfig(
                     max_output_tokens=800,
                     temperature=0.8,
+                    top_p=0.8,
+                    top_k=40
                 )
             )
             
