@@ -10,17 +10,23 @@ from dnd_integration import DnDIntegration
 
 app = FastAPI(title="AI Dungeon Master API", version="1.0.0")
 
-# Configure CORS
+# Configure CORS - Allow all origins for development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5000", "http://127.0.0.1:5000"],
+    allow_origins=["*"],  # Allow all origins for development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Initialize services
-ai_dm = AIDungeonMaster()
+try:
+    ai_dm = AIDungeonMaster()
+    print("✅ AI Dungeon Master initialized successfully")
+except Exception as e:
+    print(f"❌ Failed to initialize AI Dungeon Master: {e}")
+    raise
+
 dnd_api = DnDIntegration()
 
 # Request/Response Models
@@ -45,7 +51,7 @@ class EncounterResponse(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"message": "AI Dungeon Master API is running!"}
+    return {"message": "AI Dungeon Master API is running!", "status": "healthy"}
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_with_dm(request: ChatMessage):
@@ -53,19 +59,26 @@ async def chat_with_dm(request: ChatMessage):
     Send a message to the AI Dungeon Master and get a response.
     """
     try:
+        print(f"[INFO] Received chat request: {request.message[:50]}...")
+        
         # Get response from AI DM
-        response = await ai_dm.generate_response(
+        response = ai_dm.generate_response(
             message=request.message,
             character=request.character,
             game_session=request.game_session,
             chat_history=request.chat_history or []
         )
         
+        print(f"[INFO] Generated response successfully")
+        
         return ChatResponse(
             message=response["message"],
             suggestions=response.get("suggestions", [])
         )
     except Exception as e:
+        print(f"[ERROR] Error in chat endpoint: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error generating AI response: {str(e)}")
 
 @app.post("/api/random-encounter", response_model=EncounterResponse)
@@ -74,7 +87,9 @@ async def generate_random_encounter(request: EncounterRequest):
     Generate a random encounter for the party.
     """
     try:
-        encounter = await ai_dm.generate_encounter(
+        print(f"[INFO] Generating encounter for level {request.party_level}, size {request.party_size}")
+        
+        encounter = ai_dm.generate_encounter(
             party_level=request.party_level,
             party_size=request.party_size
         )
@@ -85,6 +100,7 @@ async def generate_random_encounter(request: EncounterRequest):
             difficulty=encounter.get("difficulty", "medium")
         )
     except Exception as e:
+        print(f"[ERROR] Error generating encounter: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating encounter: {str(e)}")
 
 @app.get("/api/spells")

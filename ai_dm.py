@@ -1,14 +1,25 @@
 import json
 import os
 from typing import Dict, List, Optional, Any
-from openai import OpenAI
+import google.generativeai as genai
 
 class AIDungeonMaster:
     def __init__(self):
-        # the newest OpenAI model is "gpt-4o" which was released May 13, 2024.
-        # do not change this unless explicitly requested by the user
-        self.model = "gpt-4o"
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        # Configure Google Gemini
+        # Option 1: Use environment variable (recommended)
+        api_key = os.getenv("GOOGLE_API_KEY")
+        
+        # Option 2: Put your API key directly here (less secure)
+        if not api_key:
+            api_key = "AIzaSyBCAfXLrErxnxlsaF1jM8dS0FHtwY4LnJI"  
+        
+        if not api_key or api_key == "YOUR_GOOGLE_API_KEY_HERE":
+            raise ValueError("Please set your Google API key either as GOOGLE_API_KEY environment variable or directly in the code")
+        
+        genai.configure(api_key=api_key)
+        
+        # Try to find the correct model name
+        self.model = self._get_available_model()
         
         # System prompt for the AI DM
         self.system_prompt = """You are an expert Dungeon Master for D&D 5th Edition. You are creative, engaging, and follow the rules of D&D 5E. Your role is to:
@@ -31,7 +42,69 @@ When generating responses, consider:
 
 Format your responses in a natural, engaging way that moves the story forward."""
 
-    async def generate_response(
+    def _get_available_model(self):
+        """Find and return an available Gemini model."""
+        try:
+            # List available models
+            models = genai.list_models()
+            print("[DEBUG] Available models:")
+            
+            # Preferred model names in order of preference
+            preferred_models = [
+                'gemini-1.5-pro',
+                'gemini-1.5-flash', 
+                'gemini-pro',
+                'gemini-1.0-pro',
+                'models/gemini-1.5-pro',
+                'models/gemini-1.5-flash',
+                'models/gemini-pro',
+                'models/gemini-1.0-pro'
+            ]
+            
+            available_model_names = []
+            for model in models:
+                model_name = model.name
+                available_model_names.append(model_name)
+                print(f"  - {model_name}")
+                
+                # Check if this model supports generateContent
+                if hasattr(model, 'supported_generation_methods'):
+                    if 'generateContent' in model.supported_generation_methods:
+                        # Check if it's one of our preferred models
+                        for preferred in preferred_models:
+                            if preferred in model_name:
+                                print(f"[INFO] Using model: {model_name}")
+                                return genai.GenerativeModel(model_name)
+            
+            # If no preferred model found, use the first available model that supports generateContent
+            for model in models:
+                if hasattr(model, 'supported_generation_methods'):
+                    if 'generateContent' in model.supported_generation_methods:
+                        print(f"[INFO] Using fallback model: {model.name}")
+                        return genai.GenerativeModel(model.name)
+            
+            # If still no model found, try the most common current model names
+            fallback_models = ['gemini-1.5-flash', 'gemini-1.5-pro']
+            for model_name in fallback_models:
+                try:
+                    test_model = genai.GenerativeModel(model_name)
+                    print(f"[INFO] Using fallback model: {model_name}")
+                    return test_model
+                except:
+                    continue
+            
+            raise Exception(f"No suitable Gemini model found. Available models: {available_model_names}")
+            
+        except Exception as e:
+            print(f"[ERROR] Error getting model: {e}")
+            # Last resort - try the newest common model name
+            try:
+                print("[INFO] Trying gemini-1.5-flash as last resort...")
+                return genai.GenerativeModel('gemini-1.5-flash')
+            except:
+                raise Exception(f"Could not initialize any Gemini model. Error: {e}")
+
+    def generate_response(
         self, 
         message: str, 
         character: Optional[Dict[str, Any]] = None,
@@ -41,35 +114,46 @@ Format your responses in a natural, engaging way that moves the story forward.""
         """Generate an AI DM response to player input."""
         
         try:
+            print(f"[DEBUG] Generating response for message: {message[:50]}...")
+            
             # Build context from character and session
             context = self._build_context(character, game_session, chat_history or [])
             
-            # Create messages for the API call
-            messages = [
-                {"role": "system", "content": self.system_prompt},
-                {"role": "system", "content": f"Context: {context}"},
-                {"role": "user", "content": message}
-            ]
+            # Create the full prompt
+            full_prompt = f"{self.system_prompt}\n\nContext: {context}\n\nPlayer message: {message}\n\nRespond as the Dungeon Master:"
             
-            # Add recent chat history
+            # Add recent chat history to the prompt
             if chat_history:
+                history_text = "\n\nRecent conversation:\n"
                 for msg in chat_history[-5:]:  # Last 5 messages for context
                     if msg.get('type') == 'player':
-                        messages.insert(-1, {"role": "user", "content": msg.get('content', '')})
+                        history_text += f"Player: {msg.get('content', '')}\n"
                     elif msg.get('type') == 'dm':
-                        messages.insert(-1, {"role": "assistant", "content": msg.get('content', '')})
+                        history_text += f"DM: {msg.get('content', '')}\n"
+                full_prompt = full_prompt.replace("Player message:", f"{history_text}\nPlayer message:")
             
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=800,
-                temperature=0.8
+            print("[DEBUG] Calling Gemini API...")
+            
+            # Generate response using Gemini
+            response = self.model.generate_content(
+                full_prompt,
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=800,
+                    temperature=0.8,
+                )
             )
             
-            dm_response = response.choices[0].message.content
+            print("[DEBUG] Gemini API response received")
+            
+            if not response or not response.text:
+                raise Exception("Empty response from Gemini API")
+            
+            dm_response = response.text.strip()
             
             # Generate action suggestions
-            suggestions = await self._generate_suggestions(message, character, dm_response)
+            suggestions = self._generate_suggestions(message, character, dm_response)
+            
+            print(f"[DEBUG] Response generated successfully: {dm_response[:50]}...")
             
             return {
                 "message": dm_response,
@@ -77,35 +161,58 @@ Format your responses in a natural, engaging way that moves the story forward.""
             }
             
         except Exception as e:
+            print(f"[ERROR] Failed to generate AI response: {str(e)}")
+            print(f"[ERROR] Exception type: {type(e).__name__}")
+            import traceback
+            traceback.print_exc()
             raise Exception(f"Failed to generate AI response: {str(e)}")
 
-    async def generate_encounter(self, party_level: int, party_size: int) -> Dict[str, Any]:
+    def generate_encounter(self, party_level: int, party_size: int) -> Dict[str, Any]:
         """Generate a random encounter for the party."""
         
         try:
+            print(f"[DEBUG] Generating encounter for level {party_level}, party size {party_size}")
+            
             prompt = f"""Generate a random D&D 5E encounter for a party of {party_size} characters at level {party_level}. 
+
+Provide a JSON response with the following structure:
+{{
+    "description": "A vivid description of the encounter scenario",
+    "monsters": [
+        {{"name": "Monster Name", "challenge_rating": "CR value"}}
+    ],
+    "difficulty": "easy/medium/hard/deadly",
+    "setting": "Where this encounter takes place",
+    "tactics": "How the monsters might behave in combat"
+}}
+
+Make it engaging and appropriate for the party's level. Respond only with valid JSON."""
             
-            Provide a JSON response with:
-            - description: A vivid description of the encounter scenario
-            - monsters: List of monsters with their names and challenge ratings
-            - difficulty: "easy", "medium", "hard", or "deadly"
-            - setting: Where this encounter takes place
-            - tactics: How the monsters might behave in combat
-            
-            Make it engaging and appropriate for the party's level."""
-            
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a D&D 5E encounter designer. Always respond with valid JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"},
-                max_tokens=600,
-                temperature=0.9
+            response = self.model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=600,
+                    temperature=0.9,
+                )
             )
             
-            encounter_data = json.loads(response.choices[0].message.content)
+            if not response or not response.text:
+                raise Exception("Empty response from Gemini API")
+            
+            # Try to parse the JSON response
+            try:
+                encounter_data = json.loads(response.text)
+            except json.JSONDecodeError as je:
+                print(f"[WARNING] JSON parsing failed: {je}")
+                print(f"[WARNING] Raw response: {response.text}")
+                # If JSON parsing fails, create a fallback response
+                encounter_data = {
+                    "description": response.text,
+                    "monsters": [{"name": "Unknown", "challenge_rating": "1"}],
+                    "difficulty": "medium",
+                    "setting": "Unknown location",
+                    "tactics": "The monsters fight to the death"
+                }
             
             return {
                 "description": encounter_data.get("description", "A mysterious encounter awaits..."),
@@ -116,9 +223,10 @@ Format your responses in a natural, engaging way that moves the story forward.""
             }
             
         except Exception as e:
+            print(f"[ERROR] Failed to generate encounter: {str(e)}")
             raise Exception(f"Failed to generate encounter: {str(e)}")
 
-    async def _generate_suggestions(
+    def _generate_suggestions(
         self, 
         player_message: str, 
         character: Optional[Dict[str, Any]], 
@@ -128,28 +236,34 @@ Format your responses in a natural, engaging way that moves the story forward.""
         
         try:
             prompt = f"""Based on this D&D scenario:
-            Player said: "{player_message}"
-            DM responded: "{dm_response}"
-            Character class: {character.get('class', 'Unknown') if character else 'Unknown'}
+Player said: "{player_message}"
+DM responded: "{dm_response}"
+Character class: {character.get('class', 'Unknown') if character else 'Unknown'}
+
+Suggest 3 brief action options the player could take next. Each should be 1-2 words maximum.
+Respond with only a JSON array like: ["action1", "action2", "action3"]"""
             
-            Suggest 3 brief action options the player could take next. Each should be 1-2 words maximum.
-            Respond with JSON: {{"suggestions": ["action1", "action2", "action3"]}}"""
-            
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "Generate brief D&D action suggestions. Respond only with JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"},
-                max_tokens=100,
-                temperature=0.7
+            response = self.model.generate_content(
+                prompt,
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=100,
+                    temperature=0.7,
+                )
             )
             
-            suggestions_data = json.loads(response.choices[0].message.content)
-            return suggestions_data.get("suggestions", [])
+            if response and response.text:
+                try:
+                    suggestions = json.loads(response.text)
+                    if isinstance(suggestions, list):
+                        return suggestions[:3]  # Ensure we only return 3 suggestions
+                except json.JSONDecodeError:
+                    pass
             
-        except Exception:
+            # Return default suggestions if parsing fails
+            return ["Investigate", "Attack", "Negotiate"]
+            
+        except Exception as e:
+            print(f"[WARNING] Failed to generate suggestions: {str(e)}")
             # Return default suggestions if AI generation fails
             return ["Investigate", "Attack", "Negotiate"]
 
